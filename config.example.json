@@ -1,6 +1,5 @@
 {
   "port": 3210,
-  "adminTokenEnv": "QQ_ADMIN_TOKEN",
   "deepseekBase": "https://api.deepseek.com",
   "deepseekKeyEnv": "DEEPSEEK_API_KEY",
   "enabled": false,
@@ -24,5 +23,6 @@
   "ownerDaily": 3,
   "ownerIntervalMinutes": 120,
   "friendDaily": 1,
-  "groupCooldownSeconds": 60
+  "groupCooldownSeconds": 60,
+  "adminPasswordEnv": "QQ_ADMIN_PASSWORD"
 }

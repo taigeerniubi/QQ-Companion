@@ -6,14 +6,15 @@ $ConfigPath = Join-Path $ProjectRoot 'config.local.json'
 if (-not (Test-Path -LiteralPath $EntryPath)) { throw '请先运行 npm run build。' }
 if (-not (Test-Path -LiteralPath $ConfigPath)) { Copy-Item -LiteralPath (Join-Path $ProjectRoot 'config.example.json') -Destination $ConfigPath }
 $EnvPath = Join-Path $ProjectRoot '.env.local'
+$BaseEnvPath = Join-Path $ProjectRoot '.env'
 $NodePath = (Get-Command node -ErrorAction Stop).Source
 if (-not $Background) {
-    & $NodePath "--env-file-if-exists=$EnvPath" $EntryPath '--config' $ConfigPath
+    & $NodePath "--env-file-if-exists=$BaseEnvPath" "--env-file-if-exists=$EnvPath" $EntryPath '--config' $ConfigPath
     exit $LASTEXITCODE
 }
 $LogDir = Join-Path $ProjectRoot 'work\logs'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-$LaunchArgs = @("--env-file-if-exists=`"$EnvPath`"", "`"$EntryPath`"", '--config', "`"$ConfigPath`"")
+$LaunchArgs = @("--env-file-if-exists=`"$BaseEnvPath`"", "--env-file-if-exists=`"$EnvPath`"", "`"$EntryPath`"", '--config', "`"$ConfigPath`"")
 $ServiceProcess = Start-Process -FilePath $NodePath -ArgumentList $LaunchArgs -WorkingDirectory $ProjectRoot -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $LogDir 'service.out.log') -RedirectStandardError (Join-Path $LogDir 'service.err.log')
 $Settings = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 $ServicePort = if ($Settings.port) { $Settings.port } else { 3210 }

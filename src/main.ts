@@ -4,6 +4,6 @@ if(args.length){if(args.length!==2||args[0]!=='--config')throw new Error('Usage:
 try{
  const service=await startService({configPath});
  console.log(`QQ companion service: ${service.url}/qq-companion/`);
- console.log('Local-only. Admin token is read from QQ_ADMIN_TOKEN or data/admin-token. QQ stays disabled until configured.');
+ console.log('Local-only. Log in with the password configured in your environment. QQ stays disabled until configured.');
  const stop=()=>{void service.close().catch(()=>{process.exitCode=1;});};process.once('SIGINT',stop);process.once('SIGTERM',stop);await service.closed;
 }catch(e){console.error(e instanceof Error?e.message:'Service failed to start');process.exitCode=1;}

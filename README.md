@@ -1,10 +1,10 @@
 # QQ-Companion
 
-自托管的 QQ AI 伙伴。支持 QQ 私聊和群聊、DeepSeek 对话、Qwen 语音和本地 SQLite 记忆。
+自托管的 QQ AI 伙伴。管理页使用环境变量密码登录，支持会话和正常停止服务。
 
 ## 启动
 
-需要 Node.js 24.13+。启动时生成的管理口令保存在本地 data/admin-token。也可在 .env.local 配置 QQ_ADMIN_TOKEN。
+需要 Node.js 24.13+。启动前将 .env.example 复制为 .env，并填写 QQ_ADMIN_PASSWORD。
 
     npm install
     npm run build

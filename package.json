@@ -1,5 +1,5 @@
 {
-  "name": "qq-companion-service", "version": "0.2.0", "private": true, "license": "MIT",
+  "name": "qq-companion-service", "version": "0.2.1", "private": true, "license": "MIT",
   "description": "Standalone QQ companion with DeepSeek, versioned graph memory and Qwen speech", "type": "module",
   "main": "./dist/index.js", "exports": { ".": "./dist/index.js", "./package.json": "./package.json" },
   "files": ["dist", "public", "scripts", "config.example.json", ".env.example", "README.md", "LICENSE"],
@@ -7,8 +7,8 @@
   "scripts": {
     "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.ts",
     "build": "node scripts/build.mjs", "check": "node scripts/build.mjs --check",
-    "doctor": "node scripts/doctor.mjs", "demo": "node --disable-warning=ExperimentalWarning scripts/demo.ts",
-    "start": "node --env-file-if-exists=.env.local dist/main.js", "stop": "node --env-file-if-exists=.env.local scripts/stop.mjs"
+    "doctor": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/doctor.mjs", "demo": "node --disable-warning=ExperimentalWarning scripts/demo.ts",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=.env.local dist/main.js", "stop": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/stop.mjs"
   },
   "devDependencies": { "@types/node": "^24.0.0", "typescript": "^6.0.3" }
 }

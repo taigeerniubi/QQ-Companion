@@ -12,9 +12,10 @@ async function instanceLock(dataDir:string){
 }
 export async function startService(options:ServiceOptions={}){
  const path=resolve(options.configPath??join(projectRoot,'config.local.json')),env=options.env??process.env;
- let config=validateConfig({...options.config,...(existsSync(path)?JSON.parse(readFileSync(path,'utf8')):{})});mkdirSync(config.dataDir,{recursive:true});
- const lock=await instanceLock(config.dataDir);let store:MemoryStore;let auth:AdminAuth;
- try{store=new MemoryStore(join(config.dataDir,'memory.db'));auth=new AdminAuth(config.dataDir,env[config.adminTokenEnv]);}catch(e){try{store!.close();}catch{}await new Promise<void>(r=>lock.close(()=>r()));throw e;}
+ let config=validateConfig({...options.config,...(existsSync(path)?JSON.parse(readFileSync(path,'utf8')):{})});
+ const auth=new AdminAuth(env[config.adminPasswordEnv],config.adminPasswordEnv);
+ mkdirSync(config.dataDir,{recursive:true});const lock=await instanceLock(config.dataDir);let store:MemoryStore;
+ try{store=new MemoryStore(join(config.dataDir,'memory.db'));}catch(e){auth.close();await new Promise<void>(r=>lock.close(()=>r()));throw e;}
  store.db.prepare("UPDATE agent_turns SET status='interrupted' WHERE status='running'").run();
  let runtime:Companion|undefined,closing=false,updating=false,error='',timer:ReturnType<typeof setInterval>|undefined;
  let lifecycle=Promise.resolve(),background:Promise<void>|undefined,closePromise:Promise<void>|undefined;let resolveClosed!:()=>void;
@@ -31,7 +32,7 @@ export async function startService(options:ServiceOptions={}){
  };
  const saveConfig=async(next:Config)=>{
   if(closing||updating)throw new Error('Service is stopping or updating');
-  if(resolve(next.dataDir)!==resolve(config.dataDir)||next.port!==config.port||next.adminTokenEnv!==config.adminTokenEnv)throw new Error('Stop the service and edit config.local.json to change dataDir/port/adminTokenEnv');
+  if(resolve(next.dataDir)!==resolve(config.dataDir)||next.port!==config.port||next.adminPasswordEnv!==config.adminPasswordEnv)throw new Error('Stop the service and edit config.local.json to change dataDir/port/adminPasswordEnv');
   if(next.enabled&&!env[next.deepseekKeyEnv])throw new Error('Set the DeepSeek API key before enabling');
   updating=true;try{await queue(async()=>{if(closing)throw new Error('Service is stopping');
    await runtime?.close();runtime=undefined;await background;
@@ -52,7 +53,7 @@ export async function startService(options:ServiceOptions={}){
   if(req.method==='GET'&&p==='/qq-companion/style.css')return staticFile(res,'style.css','text/css');
   if(req.method==='POST'&&['/qq-companion/api/login','/qq-companion/api/logout','/qq-companion/api/shutdown'].includes(p)){
    if(!sameOrigin(req))return json(res,403,{error:'Origin rejected'});
-   if(p.endsWith('/login'))return auth.login((await smallBody(req)).token,res);
+   if(p.endsWith('/login'))return auth.login((await smallBody(req)).password,res);
    if(!auth.authenticated(req))return json(res,401,{error:'请先登录管理页。'});
    if(p.endsWith('/logout'))return auth.logout(req,res);
    json(res,200,{stopping:true});setImmediate(()=>void close());return;
