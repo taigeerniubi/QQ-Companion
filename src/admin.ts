@@ -1,6 +1,7 @@
 import {type IncomingMessage,type ServerResponse} from 'node:http';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';import {fileURLToPath} from 'node:url';import {join} from 'node:path';import {randomUUID} from 'node:crypto';
 import {type Config,validateConfig} from './config.ts';import {MemoryStore} from './memory/store.ts';
+import {sameOrigin} from './auth.ts';
 export interface AdminServices {
  authenticated(req:IncomingMessage):boolean|Promise<boolean>;store:MemoryStore;getConfig():Config;status():unknown;
  saveConfig(config:Config):Promise<void>;pause(value:boolean):void;
@@ -14,8 +15,7 @@ export function adminHandler(s:AdminServices){return async(req:IncomingMessage,r
   const path=new URL(req.url??'/', 'http://localhost').pathname.replace(/^\/qq-companion/,'')||'/';
   const method=req.method??'GET';
   if(method==='POST'){
-   const origin=`${(req.socket as any).encrypted?'https':'http'}://${req.headers.host}`;
-   if(req.headers.origin!==origin||req.headers['x-companion-admin']!=='1'||!req.headers['content-type']?.startsWith('application/json'))return json(res,403,{error:'Origin or admin request header rejected'});
+   if(!sameOrigin(req,s.getConfig().adminOrigins))return json(res,403,{error:'Origin or admin request header rejected'});
   }
   if(method==='GET'&&['/','/admin.js','/style.css'].includes(path)){
    const file=path==='/'?'admin.html':path.slice(1);res.writeHead(200,{'content-type':file.endsWith('.html')?'text/html; charset=utf-8':file.endsWith('.js')?'text/javascript; charset=utf-8':'text/css; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'self'"});return res.end(readFileSync(join(publicDir,file)));

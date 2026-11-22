@@ -1,6 +1,6 @@
 # QQ-Companion
 
-自托管的 QQ AI 伙伴。支持主动聊天的本地心跳、Qwen 音色配置，以及通过 Music 3 接口在后台生成歌曲。
+自托管的 QQ AI 伙伴。支持远程管理、HTTPS 代理来源和独立部署的 Music 3 服务。
 
 ## 启动
 

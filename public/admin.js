@@ -9,12 +9,12 @@ const voicePresets=[
  {id:'longanxiaoxin',name:'龙安小昕 · 亲切活泼女声',model:'qwen-audio-3.0-tts-flash'},
  {id:'longpaopao_v3.6',name:'龙泡泡 · 软糯可爱女童声',model:'qwen-audio-3.0-tts-flash'}
 ];
-Object.assign(labels,{musicEnabled:'启用本地唱歌',musicBase:'Music 3 本机地址',musicMaxSeconds:'歌曲时长上限 / 秒',musicTimeoutMs:'歌曲等待上限 / 毫秒',proactiveOwnerOnly:'只主动找你（其他好友不主动联系）'});
+Object.assign(labels,{listenHost:'管理服务监听 IP（停机修改）',adminOrigins:'额外管理地址（域名或反向代理，逗号分隔）',musicEnabled:'启用 Music3 唱歌',musicBase:'Music3 地址（本机、尾网或 HTTPS）',musicTokenEnv:'Music3 Token 环境变量名（可选）',musicMaxSeconds:'歌曲时长上限 / 秒',musicTimeoutMs:'歌曲等待上限 / 毫秒',proactiveOwnerOnly:'只主动找你（其他好友不主动联系）'});
 const songStates={submitting:'正在提交',rendering:'正在谱曲演唱',ready:'等待发送',sending:'发送中',sent:'已发送',failed:'失败',interrupted:'提交未确认',unknown:'发送待核对'};
 function renderSongs(){
  const songs=state.songs??[];$('songs-panel').hidden=!state.config.musicEnabled&&!songs.length;
  $('songs').innerHTML=songs.map(song=>`<div class="row">${esc(song.scope)}<span class="pill">${esc(songStates[song.state]??song.state)}</span><br><small>${time(song.at)} · ${esc(song.durationSeconds)}秒${song.capped?' · 达到时长上限，结尾可能截断':''}</small>${song.error?`<p>${esc(song.error)}</p>`:''}</div>`).join('')||'<p class="empty">收到唱歌请求后，歌曲会在后台生成并发送。</p>';
- $('model-call-note').textContent='仅统计累计请求次数，不限制日常运行。失败请求也计数，本地 Music3 不计数。';
+ $('model-call-note').textContent='仅统计累计请求次数，不限制日常运行。失败请求也计数，自部署 Music3 不计数。';
  const counts=new Map((state.modelCalls??[]).map(row=>[row.model,row.calls]));
  for(const model of [state.config.model,state.config.asrModel,state.config.ttsModel])if(!counts.has(model))counts.set(model,0);
  $('model-calls').innerHTML=[...counts].map(([model,calls])=>`<div class="row">${esc(model)}<span class="pill">${esc(calls)} 次</span></div>`).join('');
@@ -42,7 +42,7 @@ function configForm(){
   if(key==='voice'){voiceField(label,value);fragment.append(label);continue;}
   const input=document.createElement(key==='persona'?'textarea':'input');input.name=key;
   if(typeof value==='boolean'){input.type='checkbox';input.checked=value;}else{input.type=typeof value==='number'?'number':'text';input.value=Array.isArray(value)?value.join(','):value;}
-  if(['dataDir','port','adminPasswordEnv','provider'].includes(key))input.readOnly=true;
+  if(['dataDir','port','listenHost','adminPasswordEnv','provider'].includes(key))input.readOnly=true;
   if(key==='ttsModel')input.readOnly=voicePresets.some(p=>p.id===state.config.voice);
   label.append(input);fragment.append(label);
  }

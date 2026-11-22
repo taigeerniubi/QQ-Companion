@@ -3,6 +3,8 @@ import {createHash} from 'node:crypto';import {existsSync,readFileSync,writeFile
 import {validateConfig,type Config} from './config.ts';import {MemoryStore} from './memory/store.ts';import {DeepSeekAgent} from './agent.ts';import {Companion} from './runtime.ts';import {OneBot} from './qq/onebot.ts';import {QwenSpeech} from './models/qwen.ts';import {adminHandler} from './admin.ts';import {AdminAuth,json,sameOrigin,smallBody} from './auth.ts';import {type Fetcher} from './http.ts';
 import {Music3} from './models/music3.ts';
 import {countedModels} from './models/call-usage.ts';
+import {allowedAdminHost,managementUrl} from './network.ts';
+import {secureRequest} from './auth.ts';
 export interface ServiceOptions {configPath?:string;config?:Partial<Config>;port?:number;env?:Record<string,string|undefined>;fetcher?:Fetcher}
 const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 async function instanceLock(dataDir:string){
@@ -29,13 +31,13 @@ export async function startService(options:ServiceOptions={}){
   if(!env[config.deepseekKeyEnv])throw new Error('DeepSeek API key is not configured');
   const bot=new OneBot({httpUrl:config.httpUrl,wsUrl:config.wsUrl,selfId:config.selfId,token:env[config.onebotTokenEnv]??''},options.fetcher);
   const speech=new QwenSpeech({apiBase:config.qwenBase,apiKey:env[config.qwenKeyEnv]??'',asrModel:config.asrModel,ttsModel:config.ttsModel,voice:config.voice},modelFetch);
-  const instance=new Companion(config,store,bot,new DeepSeekAgent(config,store,env[config.deepseekKeyEnv]??'',modelFetch),speech,config.musicEnabled?new Music3(config.musicBase,options.fetcher):undefined);runtime=instance;
+  const instance=new Companion(config,store,bot,new DeepSeekAgent(config,store,env[config.deepseekKeyEnv]??'',modelFetch),speech,config.musicEnabled?new Music3(config.musicBase,options.fetcher,env[config.musicTokenEnv]??''):undefined);runtime=instance;
   await bot.connect(e=>instance.accept(e),e=>{if(runtime===instance&&!closing)error=e.message;});
   if(!closing)await instance.flush();
  };
  const saveConfig=async(next:Config)=>{
   if(closing||updating)throw new Error('Service is stopping or updating');
-  if(resolve(next.dataDir)!==resolve(config.dataDir)||next.port!==config.port||next.adminPasswordEnv!==config.adminPasswordEnv)throw new Error('Stop the service and edit config.local.json to change dataDir/port/adminPasswordEnv');
+  if(resolve(next.dataDir)!==resolve(config.dataDir)||next.port!==config.port||next.listenHost!==config.listenHost||next.adminPasswordEnv!==config.adminPasswordEnv)throw new Error('Stop the service and edit config.local.json to change dataDir/port/listenHost/adminPasswordEnv');
   if(next.enabled&&!env[next.deepseekKeyEnv])throw new Error('Set the DeepSeek API key before enabling');
   updating=true;try{await queue(async()=>{if(closing)throw new Error('Service is stopping');
    await runtime?.close();runtime=undefined;await background;
@@ -46,7 +48,7 @@ export async function startService(options:ServiceOptions={}){
  const staticFile=(res:ServerResponse,file:string,type:string)=>{res.writeHead(200,{'content-type':type+'; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff','content-security-policy':"default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"});res.end(readFileSync(join(projectRoot,'public',file)));};
  let actualPort=0;
  const handle=async(req:IncomingMessage,res:ServerResponse)=>{
-  if(![`127.0.0.1:${actualPort}`,`localhost:${actualPort}`].includes(req.headers.host??''))return json(res,403,{error:'Host rejected'});
+  if(!allowedAdminHost(req.headers.host,actualPort,config.adminOrigins))return json(res,403,{error:'Host rejected'});
   if(closing)return json(res,503,{error:'Service is stopping'});
   const p=new URL(req.url??'/','http://localhost').pathname;
   if(req.method==='GET'&&p==='/healthz')return json(res,200,{ok:true,service:'qq-companion',pid:process.pid});
@@ -55,10 +57,10 @@ export async function startService(options:ServiceOptions={}){
   if(req.method==='GET'&&p==='/qq-companion/login.js')return staticFile(res,'login.js','text/javascript');
   if(req.method==='GET'&&p==='/qq-companion/style.css')return staticFile(res,'style.css','text/css');
   if(req.method==='POST'&&['/qq-companion/api/login','/qq-companion/api/logout','/qq-companion/api/shutdown'].includes(p)){
-   if(!sameOrigin(req))return json(res,403,{error:'Origin rejected'});
-   if(p.endsWith('/login'))return auth.login((await smallBody(req)).password,res);
+   if(!sameOrigin(req,config.adminOrigins))return json(res,403,{error:'Origin rejected'});
+   if(p.endsWith('/login'))return auth.login((await smallBody(req)).password,res,secureRequest(req,config.adminOrigins));
    if(!auth.authenticated(req))return json(res,401,{error:'请先登录管理页。'});
-   if(p.endsWith('/logout'))return auth.logout(req,res);
+   if(p.endsWith('/logout'))return auth.logout(req,res,secureRequest(req,config.adminOrigins));
    json(res,200,{stopping:true});setImmediate(()=>void close());return;
   }
   if(req.method==='GET'&&p==='/qq-companion/'&&!auth.authenticated(req)){res.writeHead(302,{location:'/qq-companion/login'});return res.end();}
@@ -71,9 +73,9 @@ export async function startService(options:ServiceOptions={}){
   const early=runtime?.close();const httpClosed=new Promise<void>(r=>server.close(()=>r()));const force=setTimeout(()=>server.closeAllConnections(),5000);force.unref();
   closePromise=(async()=>{try{await early;await lifecycle;await background;await runtime?.close();await httpClosed;}finally{clearTimeout(force);auth.close();store.close();await new Promise<void>(r=>lock.close(()=>r()));resolveClosed();}})();return closePromise;
  };
- try{await new Promise<void>((ok,fail)=>{server.once('error',fail);server.listen(options.port??config.port,'127.0.0.1',()=>{server.off('error',fail);ok();});});}catch(e){await close();throw e;}
+ try{await new Promise<void>((ok,fail)=>{server.once('error',fail);server.listen(options.port??config.port,config.listenHost,()=>{server.off('error',fail);ok();});});}catch(e){await close();throw e;}
  actualPort=(server.address() as {port:number}).port;
  const ready=queue(launch).catch(e=>{if(!closing)error=e instanceof Error?e.message:'Start failed';});
  timer=setInterval(()=>{if(closing||updating||background||!runtime)return;const instance=runtime;background=(async()=>{await instance.retryExtraction();if(!closing&&!updating)await instance.tick();})().catch(e=>{if(!closing)error=e instanceof Error?e.message:'Background work failed';}).finally(()=>{background=undefined;});},60000);timer.unref();
- return {url:`http://127.0.0.1:${actualPort}`,store,ready,closed,close,get runtime(){return runtime;}};
+ return {url:managementUrl(config.listenHost,actualPort),listenHost:config.listenHost,store,ready,closed,close,get runtime(){return runtime;}};
 }

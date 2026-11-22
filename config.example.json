@@ -1,5 +1,7 @@
 {
   "port": 3210,
+  "listenHost": "0.0.0.0",
+  "adminOrigins": [],
   "deepseekBase": "https://api.deepseek.com",
   "deepseekKeyEnv": "DEEPSEEK_API_KEY",
   "enabled": false,
@@ -19,6 +21,7 @@
   "voice": "",
   "musicEnabled": false,
   "musicBase": "http://127.0.0.1:8086",
+  "musicTokenEnv": "MUSIC3_TOKEN",
   "musicMaxSeconds": 60,
   "musicTimeoutMs": 900000,
   "proactive": true,

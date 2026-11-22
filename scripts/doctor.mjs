@@ -1,4 +1,5 @@
 import {existsSync,readFileSync} from 'node:fs';import {resolve,join} from 'node:path';
+import {managementBase} from './service-url.mjs';
 const root=resolve(import.meta.dirname,'..'),file=join(root,'config.local.json');const cfg=JSON.parse(readFileSync(existsSync(file)?file:join(root,'config.example.json'),'utf8'));
 const [major,minor]=process.versions.node.split('.').map(Number);
 const adminPassword=process.env[cfg.adminPasswordEnv||'QQ_ADMIN_PASSWORD'];
@@ -7,5 +8,5 @@ const live=[['QQ IDs',Boolean(cfg.selfId&&cfg.ownerId&&cfg.selfId!==cfg.ownerId)
 for(const [label,ok]of core)console.log(`${ok?'OK':'MISSING'}  ${label}`);
 for(const [label,ok]of live)console.log(`${ok?'OK':'PENDING'}  ${label}`);
 console.log('Admin login uses the environment password; no data/admin-token is required.');
-console.log(`Management: http://127.0.0.1:${cfg.port??3210}/qq-companion/; QQ enabled: ${Boolean(cfg.enabled)}.`);
+console.log(`Management: ${managementBase(cfg)}/qq-companion/; listenHost: ${cfg.listenHost??'0.0.0.0'}; QQ enabled: ${Boolean(cfg.enabled)}.`);
 if(process.argv.includes('--strict')&&[...core,...live].some(([,ok])=>!ok))process.exitCode=1;

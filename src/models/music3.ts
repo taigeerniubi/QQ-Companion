@@ -18,18 +18,20 @@ export function musicPrompt(request:SongRequest,seconds:number){
 export class Music3 {
  readonly base:string;
  private fetcher:Fetcher;
- constructor(base:string, fetcher:Fetcher=fetch) {
+ private token:string;
+ constructor(base:string, fetcher:Fetcher=fetch,token='') {
   this.fetcher=fetcher;
-  const url=endpoint(base,['http:']);
-  if(!['127.0.0.1','localhost','[::1]'].includes(url.hostname)||url.pathname!=='/')throw new Error('Music3 requires a loopback HTTP endpoint');
-  this.base=base.replace(/\/$/,'');
+  this.token=token;
+  const url=endpoint(base,['http:','https:']);
+  this.base=url.href.replace(/\/+$/,'');
  }
+ private headers(){return this.token?{Authorization:`Bearer ${this.token}`} : undefined;}
  async submit(request:SongRequest,seconds:number,signal?:AbortSignal):Promise<string> {
   if(typeof request.lyrics!=='string'||!request.lyrics.trim()||request.lyrics.length>500)throw new Error('Song lyrics require 1–500 characters');
   if(typeof request.style!=='string'||!request.style.trim()||request.style.length>1500)throw new Error('Song style requires 1–1500 characters');
   if(request.requirements!==undefined&&(typeof request.requirements!=='string'||request.requirements.length>2000))throw new Error('Invalid song requirements');
   const prompt=musicPrompt(request,seconds);
-  const result=await postJson(this.fetcher,this.base+'/synth','',{
+  const result=await postJson(this.fetcher,this.base+'/synth',this.token,{
    ...prompt,
    duration:seconds,steps:30,lm_batch_size:1,synth_batch_size:1,output_format:'mp3',mp3_bitrate:128
   },signal,10000);
@@ -37,14 +39,14 @@ export class Music3 {
   return result.id;
  }
  async status(id:string,signal:AbortSignal):Promise<string> {
-  const response=await this.fetcher(this.base+'/job?id='+encodeURIComponent(id),{signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),redirect:'error'});
+  const response=await this.fetcher(this.base+'/job?id='+encodeURIComponent(id),{headers:this.headers(),signal:AbortSignal.any([signal,AbortSignal.timeout(10000)]),redirect:'error'});
   if(!response.ok)throw new Error(`Music3 status HTTP ${response.status}`);
   const body=JSON.parse((await bytes(response,10000)).toString('utf8'));
   if(!['queued','running','done','failed','cancelled'].includes(body.status))throw new Error('Invalid Music3 status');
   return body.status;
  }
  async result(id:string,seconds:number,signal:AbortSignal):Promise<SongAudio> {
-  const response=await this.fetcher(this.base+`/job?id=${encodeURIComponent(id)}&result=1`,{signal:AbortSignal.any([signal,AbortSignal.timeout(30000)]),redirect:'error'});
+  const response=await this.fetcher(this.base+`/job?id=${encodeURIComponent(id)}&result=1`,{headers:this.headers(),signal:AbortSignal.any([signal,AbortSignal.timeout(30000)]),redirect:'error'});
   if(!response.ok)throw new Error(`Music3 result HTTP ${response.status}`);
   const boundary=response.headers.get('content-type')?.match(/boundary="?([^";\s]+)/i)?.[1];
   if(!boundary||boundary.length>100)throw new Error('Music3 result has no valid boundary');
@@ -70,6 +72,6 @@ export class Music3 {
   return {...audio,capped};
  }
  async cancel(id:string):Promise<void> {
-  await this.fetcher(this.base+`/job?id=${encodeURIComponent(id)}&cancel=1`,{method:'POST',signal:AbortSignal.timeout(3000),redirect:'error'}).catch(()=>{});
+  await this.fetcher(this.base+`/job?id=${encodeURIComponent(id)}&cancel=1`,{method:'POST',headers:this.headers(),signal:AbortSignal.timeout(3000),redirect:'error'}).catch(()=>{});
  }
 }

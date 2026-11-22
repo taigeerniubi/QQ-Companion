@@ -18,9 +18,9 @@ function multipart(codes='1,2,3,4,5,6,7,8'){
 }
 async function until(fn:()=>boolean){for(let i=0;i<200&&!fn();i++)await delay(5);assert(fn(),'condition did not become true');}
 
-test('Music3 sends a bounded singing request, enforces loopback, and decodes binary multipart without following URLs',async()=>{
- for(const base of ['https://example.com','http://192.0.2.10:8086','http://127.0.0.1:8086/proxy','http://127.0.0.1:8086/?token=x'])assert.throws(()=>new Music3(base));
- assert.throws(()=>validateConfig({musicBase:'http://example.com'}));
+test('Music3 bounds singing requests, validates HTTP endpoints, and decodes binary multipart without following URLs',async()=>{
+ for(const base of ['file:///model','ftp://example.com','http://user:secret@127.0.0.1','http://127.0.0.1:8086/?token=x','http://example.com/#secret'])assert.throws(()=>new Music3(base));
+ assert.equal(validateConfig({musicBase:'http://192.0.2.10:8086'}).musicBase,'http://192.0.2.10:8086');
  assert.throws(()=>validateConfig({musicMaxSeconds:500}));
  const seen:any[]=[];
  const client=new Music3('http://127.0.0.1:8086',async(url,init)=>{seen.push([String(url),init]);return String(url).endsWith('/synth')?Response.json({id:'job_1'}):String(url).includes('result=1')?multipart():Response.json({status:'done'});});
@@ -31,6 +31,19 @@ test('Music3 sends a bounded singing request, enforces loopback, and decodes bin
  const audio=await client.result('job_1',60,new AbortController().signal);assert.deepEqual(audio.audio,mp3);assert.equal(audio.capped,false);
  const capped=new Music3('http://localhost:8086',async()=>multipart(Array(15*25*8).fill('1').join(',')));
  assert.equal((await capped.result('x',15,new AbortController().signal)).capped,true);
+});
+
+test('Music3 supports a remote HTTPS path and sends optional authorization only to the configured engine',async()=>{
+ const calls:any[]=[],signal=new AbortController().signal;
+ const client=new Music3('https://gpu.example.test/music3/',async(url,init)=>{
+  calls.push({url:String(url),init});
+  return String(url).endsWith('/synth')?Response.json({id:'remote_1'}):String(url).includes('result=1')?multipart():Response.json({status:'done'});
+ },'offline-music-token');
+ assert.equal(client.base,'https://gpu.example.test/music3');
+ await client.submit(request,20);await client.status('remote_1',signal);await client.result('remote_1',20,signal);await client.cancel('remote_1');
+ assert.equal(calls.length,4);
+ for(const {url,init}of calls){assert(url.startsWith('https://gpu.example.test/music3/'));assert.equal(new Headers(init.headers).get('authorization'),'Bearer offline-music-token');assert.equal(init.redirect,'error');}
+ assert(!JSON.stringify(calls.map(c=>c.url)).includes('token'));
 });
 
 test('lyrics on tag lines are preserved before the native engine can discard them',()=>{
