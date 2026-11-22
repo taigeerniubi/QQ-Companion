@@ -1,6 +1,8 @@
 import {createServer as httpServer,type IncomingMessage,type ServerResponse} from 'node:http';import {createServer as netServer} from 'node:net';
 import {createHash} from 'node:crypto';import {existsSync,readFileSync,writeFileSync,mkdirSync,renameSync,realpathSync} from 'node:fs';import {join,resolve,dirname} from 'node:path';import {fileURLToPath} from 'node:url';
 import {validateConfig,type Config} from './config.ts';import {MemoryStore} from './memory/store.ts';import {DeepSeekAgent} from './agent.ts';import {Companion} from './runtime.ts';import {OneBot} from './qq/onebot.ts';import {QwenSpeech} from './models/qwen.ts';import {adminHandler} from './admin.ts';import {AdminAuth,json,sameOrigin,smallBody} from './auth.ts';import {type Fetcher} from './http.ts';
+import {Music3} from './models/music3.ts';
+import {countedModels} from './models/call-usage.ts';
 export interface ServiceOptions {configPath?:string;config?:Partial<Config>;port?:number;env?:Record<string,string|undefined>;fetcher?:Fetcher}
 const projectRoot=fileURLToPath(new URL('../',import.meta.url));
 async function instanceLock(dataDir:string){
@@ -17,6 +19,7 @@ export async function startService(options:ServiceOptions={}){
  mkdirSync(config.dataDir,{recursive:true});const lock=await instanceLock(config.dataDir);let store:MemoryStore;
  try{store=new MemoryStore(join(config.dataDir,'memory.db'));}catch(e){auth.close();await new Promise<void>(r=>lock.close(()=>r()));throw e;}
  store.db.prepare("UPDATE agent_turns SET status='interrupted' WHERE status='running'").run();
+ const modelFetch=countedModels(store,options.fetcher);
  let runtime:Companion|undefined,closing=false,updating=false,error='',timer:ReturnType<typeof setInterval>|undefined;
  let lifecycle=Promise.resolve(),background:Promise<void>|undefined,closePromise:Promise<void>|undefined;let resolveClosed!:()=>void;
  const closed=new Promise<void>(r=>{resolveClosed=r;});
@@ -25,8 +28,8 @@ export async function startService(options:ServiceOptions={}){
   if(closing||!config.enabled)return;
   if(!env[config.deepseekKeyEnv])throw new Error('DeepSeek API key is not configured');
   const bot=new OneBot({httpUrl:config.httpUrl,wsUrl:config.wsUrl,selfId:config.selfId,token:env[config.onebotTokenEnv]??''},options.fetcher);
-  const speech=new QwenSpeech({apiBase:config.qwenBase,apiKey:env[config.qwenKeyEnv]??'',asrModel:config.asrModel,ttsModel:config.ttsModel,voice:config.voice},options.fetcher);
-  const instance=new Companion(config,store,bot,new DeepSeekAgent(config,store,env[config.deepseekKeyEnv]??'',options.fetcher),speech);runtime=instance;
+  const speech=new QwenSpeech({apiBase:config.qwenBase,apiKey:env[config.qwenKeyEnv]??'',asrModel:config.asrModel,ttsModel:config.ttsModel,voice:config.voice},modelFetch);
+  const instance=new Companion(config,store,bot,new DeepSeekAgent(config,store,env[config.deepseekKeyEnv]??'',modelFetch),speech,config.musicEnabled?new Music3(config.musicBase,options.fetcher):undefined);runtime=instance;
   await bot.connect(e=>instance.accept(e),e=>{if(runtime===instance&&!closing)error=e.message;});
   if(!closing)await instance.flush();
  };

@@ -38,8 +38,9 @@ export class DeepSeekAgent implements Host {
  async run(input:AgentRun){
   if(this.closing)throw new Error('Agent is closed');if(this.active.has(input.scope))throw new Error('Conversation is busy');
   const signal=AbortSignal.any([input.signal,this.lifetime.signal,AbortSignal.timeout(this.config.turnTimeoutMs)]);
-  const prefix:Message[]=[{role:'system',content:this.config.persona+'\n'+personaRules},...this.history(input.scope)];
-  const turn:Message[]=[{role:'user',content:input.prompt}];const names=Object.keys(schemas).filter(n=>n!=='memory_submit');
+  const musicRules=input.tools.qq_sing?`\n现在具备 qq_sing 真正歌声生成工具，以本轮可用工具为准，不沿用历史里不能唱歌的说法。用户明确要求唱歌时调用 qq_sing，不要把歌词交给 voice 冒充唱歌。遵守用户当次对曲风、情绪、主唱、语言和内容的要求，并写入style和歌词。用户指定秒数时传duration_seconds，支持15–${this.config.musicMaxSeconds}秒；不指定时默认${this.config.musicMaxSeconds}秒。超出上限时先说明限制，不要擅自截短。使用适合目标秒数的简短原创歌词，留出2–3秒收尾，默认不要前奏或大段器乐。歌曲后台生成，rendering不代表已发送，qq_song_status可查询；失败时如实说明。`:'';
+  const prefix:Message[]=[{role:'system',content:this.config.persona+'\n'+personaRules+musicRules},...this.history(input.scope)];
+  const turn:Message[]=[{role:'user',content:input.prompt}];const names=Object.keys(schemas).filter(n=>n!=='memory_submit'&&Object.hasOwn(input.tools,n));
   this.store.db.prepare('INSERT INTO agent_turns(id,scope,at,status,messages) VALUES(?,?,?,?,?)').run(input.turn,input.scope,Date.now(),'running',JSON.stringify(turn));
   this.active.add(input.scope);let complete=false;
   const save=()=>this.store.db.prepare('UPDATE agent_turns SET status=?,messages=? WHERE id=?').run(complete?'complete':'running',JSON.stringify(turn),input.turn);

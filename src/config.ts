@@ -5,7 +5,8 @@ export interface Config {
  enabled:boolean;selfId:string;ownerId:string;friends:string[];groups:string[];httpUrl:string;wsUrl:string;onebotTokenEnv:string;
  dataDir:string;provider:string;model:string;persona:string;batchMs:number;turnTimeoutMs:number;
  qwenBase:string;qwenKeyEnv:string;asrModel:string;ttsModel:string;voice:string;
- proactive:boolean;quietStart:number;quietEnd:number;ownerDaily:number;ownerIntervalMinutes:number;friendDaily:number;groupCooldownSeconds:number;
+ musicEnabled:boolean;musicBase:string;musicMaxSeconds:number;musicTimeoutMs:number;
+ proactive:boolean;proactiveOwnerOnly:boolean;quietStart:number;quietEnd:number;ownerDaily:number;ownerIntervalMinutes:number;friendDaily:number;groupCooldownSeconds:number;
  port:number;adminPasswordEnv:string;deepseekBase:string;deepseekKeyEnv:string;
 }
 export function defaults():Config{return {
@@ -14,14 +15,15 @@ export function defaults():Config{return {
  port:3210,adminPasswordEnv:'QQ_ADMIN_PASSWORD',deepseekBase:'https://api.deepseek.com',deepseekKeyEnv:'DEEPSEEK_API_KEY',
  persona:'你是通过 QQ 交流的 AI 伙伴。用自然、简短的中文交流，有自己的判断，尊重对方的作息。承认不确定，不编造共同经历。',batchMs:1500,turnTimeoutMs:120000,
  qwenBase:'https://dashscope.aliyuncs.com',qwenKeyEnv:'DASHSCOPE_API_KEY',asrModel:'qwen-audio-3.0-asr-flash',ttsModel:'qwen-audio-3.1-tts-flash',voice:'',
- proactive:true,quietStart:23,quietEnd:8,ownerDaily:3,ownerIntervalMinutes:120,friendDaily:1,groupCooldownSeconds:60
+ musicEnabled:false,musicBase:'http://127.0.0.1:8086',musicMaxSeconds:60,musicTimeoutMs:900000,
+ proactive:true,proactiveOwnerOnly:true,quietStart:23,quietEnd:8,ownerDaily:3,ownerIntervalMinutes:120,friendDaily:1,groupCooldownSeconds:60
 };}
 export function validateConfig(input:Partial<Config>):Config{
- // Older configs may name a token variable. Password auth deliberately ignores it.
- const {adminTokenEnv:legacyTokenEnv,...current}=input as Partial<Config>&{adminTokenEnv?:unknown};input=current;
+ // Retired fields are accepted for upgrades but never applied or re-saved.
+ const {adminTokenEnv:legacyTokenEnv,cloudModelCallLimit:legacyLimit,...current}=input as Partial<Config>&{adminTokenEnv?:unknown;cloudModelCallLimit?:unknown};input=current;
  const cfg={...defaults(),...input};
  for(const key of Object.keys(input))if(!(key in defaults()))throw new Error(`Unknown config field: ${key}`);
- for(const key of ['enabled','proactive'] as const)if(typeof cfg[key]!=='boolean')throw new Error(`Invalid ${key}`);
+ for(const key of ['enabled','proactive','proactiveOwnerOnly','musicEnabled'] as const)if(typeof cfg[key]!=='boolean')throw new Error(`Invalid ${key}`);
  for(const key of ['selfId','ownerId'] as const)if(typeof cfg[key]!=='string'||(cfg[key]&&!/^\d{1,16}$/.test(cfg[key])))throw new Error(`Invalid ${key}`);
  if(cfg.enabled&&(!cfg.selfId||!cfg.ownerId||cfg.selfId===cfg.ownerId))throw new Error('Set distinct companion and owner QQ IDs before enabling');
  for(const key of ['friends','groups'] as const)if(!Array.isArray(cfg[key])||cfg[key].length>100||cfg[key].some(x=>typeof x!=='string'||!/^\d{1,16}$/.test(x)))throw new Error(`Invalid ${key}`);
@@ -31,6 +33,9 @@ export function validateConfig(input:Partial<Config>):Config{
  if(!isAbsolute(cfg.dataDir))throw new Error('dataDir must be absolute');
  endpoint(cfg.httpUrl);endpoint(cfg.wsUrl,['ws:','wss:']);endpoint(cfg.qwenBase,['https:']);
  endpoint(cfg.deepseekBase,['https:']);if(cfg.provider!=='deepseek')throw new Error('This service supports the DeepSeek provider');
+ const musicUrl=endpoint(cfg.musicBase,['http:']);if(!['127.0.0.1','localhost','[::1]'].includes(musicUrl.hostname)||musicUrl.pathname!=='/')throw new Error('Music3 must use a loopback HTTP address without a path');
+ if(!Number.isInteger(cfg.musicMaxSeconds)||cfg.musicMaxSeconds<15||cfg.musicMaxSeconds>120)throw new Error('musicMaxSeconds must be 15–120');
+ if(!Number.isInteger(cfg.musicTimeoutMs)||cfg.musicTimeoutMs<60000||cfg.musicTimeoutMs>3600000)throw new Error('musicTimeoutMs must be 60000–3600000');
  if(!Number.isInteger(cfg.port)||cfg.port<1||cfg.port>65535)throw new Error('Invalid port');
  for(const [key,max]of Object.entries({batchMs:10000,turnTimeoutMs:600000,quietStart:23,quietEnd:23,ownerDaily:20,ownerIntervalMinutes:1440,friendDaily:10,groupCooldownSeconds:3600})){
   const n=(cfg as any)[key];if(!Number.isInteger(n)||n<0||n>max)throw new Error(`Invalid ${key}`);

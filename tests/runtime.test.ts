@@ -6,7 +6,7 @@ const event=(id=1,extra={})=>({self_id:100,post_type:'message',message_type:'pri
 function fixture(behavior?:any){const store=new MemoryStore(':memory:');const calls:any[]=[];const prompts:any[]=[];
  const bot={status:'connected',send:async(...args:any[])=>{calls.push(args);return {message_id:-10};},call:async()=>({base64:'AQI='}),close(){}};
  const host={run:async(input:any)=>{prompts.push(input);await (behavior??(async(i:any)=>i.tools.qq_reply({parts:[{type:'text',text:'你好呀'}]})))(input);},extract:async()=>({operations:[],edges:[],handoff:''}),close:async()=>{}};
- return {store,calls,prompts,bot,host,runtime:new Companion(conf(),store,bot as any,host)};
+ return {store,calls,prompts,bot,host,runtime:new Companion(conf(),store,bot as any,host,undefined,undefined,{heartbeatRandom:()=>.5})};
 }
 test('same input is processed once and wrong accounts/self/disabled targets ignored',async()=>{
  const f=fixture();assert.equal(f.runtime.accept(event()),true);assert.equal(f.runtime.accept(event()),false);
@@ -27,11 +27,30 @@ test('only seed and catalog reach host until explicit read, no candidate full-bo
  const s='100:private:200',a=f.store.add({scope:s,title:'电影',text:'电影计划',kind:'event',sourceIds:['s']}),b=f.store.add({scope:s,title:'后续',text:'UNREAD_SECRET',kind:'event',sourceIds:['s']});f.store.link(s,a.id,b.id,'follow_up',['s']);
  f.runtime.accept(event(1,{message:[{type:'text',data:{text:'电影'}}]}));await f.runtime.flush();assert.equal(f.prompts.length,1);assert.equal(f.store.get(s,b.id)?.reads,0);await f.runtime.close();f.store.close();
 });
-test('quiet hours suppress proactive contact and configured daytime allows owner',async()=>{
- const f=fixture();f.store.db.prepare('INSERT INTO handoffs VALUES(?,?,?)').run('100:private:200','想问电影结果',1);
- await f.runtime.tick(Date.parse('2026-11-12T23:30:00+08:00'));assert.equal(f.calls.length,0);
- await f.runtime.tick(Date.parse('2026-11-13T10:00:00+08:00'));assert.equal(f.calls.length,1);
- await f.runtime.tick(Date.parse('2026-11-13T10:01:00+08:00'));assert.equal(f.calls.length,1);await f.runtime.close();f.store.close();
+test('heartbeat calls host only after a real opportunity, sends at most once and does not call during quiet hours',async()=>{
+ const f=fixture(async(i:any)=>{assert(i.prompt.includes('本地心跳'));assert(i.prompt.includes('电影'));await i.tools.qq_reply({parts:[{type:'text',text:'上次说的电影，你看了没？'}]});await assert.rejects(()=>i.tools.qq_reply({parts:[{type:'text',text:'再来一句'}]}),/one proactive/);});
+ const scope='100:private:200',start=Date.parse('2026-11-14T08:00:00+08:00');
+ f.store.db.prepare("INSERT INTO messages(id,scope,role,body,at,state,extracted) VALUES('seed',?,'user',?,?,'done',1)").run(scope,JSON.stringify({normalizedText:'最近想去看科幻电影，等我想好了告诉你'}),start-3600000);
+ await f.runtime.tick(Date.parse('2026-11-13T23:30:00+08:00'));assert.equal(f.calls.length,0);
+ for(let t=start;t<start+4*3600000;t+=60000)await f.runtime.tick(t);
+ assert.equal(f.calls.length,1);assert.equal(f.prompts.length,1);
+ assert.equal(f.runtime.status().heartbeat.todaySent,1);await f.runtime.close();f.store.close();
+});
+
+test('an incoming message cancels a prepared proactive send and is answered normally',async()=>{
+ let interrupted=false;
+ const f=fixture(async(i:any)=>{
+  if(i.prompt.includes('本地心跳')){
+   interrupted=true;f.runtime.accept(event(40,{time:Date.parse('2026-11-14T10:00:00+08:00')/1000}));
+   await assert.rejects(()=>i.tools.qq_reply({parts:[{type:'text',text:'过时的主动消息'}]}),/paused|disabled/);
+  }else await i.tools.qq_reply({parts:[{type:'text',text:'回复刚收到的消息'}]});
+ });
+ const start=Date.parse('2026-11-14T08:00:00+08:00');
+ f.store.db.prepare("INSERT INTO messages(id,scope,role,body,at,state,extracted) VALUES('seed','100:private:200','user',?,?,'done',1)").run(JSON.stringify({normalizedText:'想聊聊明天看电影的计划'}),start-3600000);
+ for(let t=start;t<start+4*3600000&&!interrupted;t+=60000)await f.runtime.tick(t);
+ await f.runtime.flush();assert(interrupted);assert.equal(f.calls.length,1);assert.equal(f.calls[0][1][0].data.text,'回复刚收到的消息');
+ assert.equal(f.store.db.prepare('SELECT proactive FROM outbox').get()?.proactive,0);
+ await f.runtime.close();f.store.close();
 });
 test('unknown outcome blocks another send attempt within the same turn',async()=>{
  const f=fixture(async(i:any)=>{for(let n=0;n<2;n++)try{await i.tools.qq_reply({parts:[{type:'text',text:'hello'}]});}catch{}});

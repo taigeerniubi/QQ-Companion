@@ -1,12 +1,12 @@
 # QQ-Companion
 
-自托管的 QQ AI 伙伴。管理页使用环境变量密码登录，支持会话和正常停止服务。
+自托管的 QQ AI 伙伴。支持主动聊天的本地心跳、Qwen 音色配置，以及通过 Music 3 接口在后台生成歌曲。
 
 ## 启动
 
 需要 Node.js 24.13+。启动前将 .env.example 复制为 .env，并填写 QQ_ADMIN_PASSWORD。
 
-    npm install
+    npm ci
     npm run build
     npm start
 

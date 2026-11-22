@@ -45,7 +45,9 @@ export class MemoryStore {
    CREATE TABLE IF NOT EXISTS sessions(scope TEXT PRIMARY KEY,session_id TEXT NOT NULL);
    CREATE TABLE IF NOT EXISTS handoffs(scope TEXT PRIMARY KEY,text TEXT NOT NULL,updated_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS cloud_model_calls(model TEXT PRIMARY KEY,calls INTEGER NOT NULL,first_at INTEGER NOT NULL,last_at INTEGER NOT NULL);
    CREATE TABLE IF NOT EXISTS agent_turns(seq INTEGER PRIMARY KEY,id TEXT UNIQUE NOT NULL,scope TEXT NOT NULL,at INTEGER NOT NULL,status TEXT NOT NULL,messages TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS music_jobs(id TEXT PRIMARY KEY,scope TEXT NOT NULL,turn_id TEXT NOT NULL UNIQUE,remote_id TEXT,state TEXT NOT NULL,request TEXT NOT NULL,file TEXT,error TEXT NOT NULL DEFAULT '',at INTEGER NOT NULL,updated_at INTEGER NOT NULL,capped INTEGER NOT NULL DEFAULT 0);
    CREATE INDEX IF NOT EXISTS agent_turns_scope ON agent_turns(scope,seq);
    CREATE INDEX IF NOT EXISTS messages_scope ON messages(scope,at);
    CREATE INDEX IF NOT EXISTS memories_scope ON memories(scope);
