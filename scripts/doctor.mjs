@@ -1,0 +1,10 @@
+import {existsSync,readFileSync} from 'node:fs';import {resolve,join} from 'node:path';
+const root=resolve(import.meta.dirname,'..'),file=join(root,'config.local.json');const cfg=JSON.parse(readFileSync(existsSync(file)?file:join(root,'config.example.json'),'utf8'));
+const [major,minor]=process.versions.node.split('.').map(Number);
+const core=[['Node >= 24.13',major>24||major===24&&minor>=13],['Standalone build',existsSync(join(root,'dist/main.js'))],['Local config',existsSync(file)]];
+const live=[['QQ IDs',Boolean(cfg.selfId&&cfg.ownerId&&cfg.selfId!==cfg.ownerId)],['DeepSeek key',Boolean(process.env[cfg.deepseekKeyEnv||'DEEPSEEK_API_KEY'])],['Qwen key',Boolean(process.env[cfg.qwenKeyEnv||'DASHSCOPE_API_KEY'])],['Qwen voice',Boolean(cfg.voice)],['OneBot token',Boolean(process.env[cfg.onebotTokenEnv||'ONEBOT_TOKEN'])]];
+for(const [label,ok]of core)console.log(`${ok?'OK':'MISSING'}  ${label}`);
+for(const [label,ok]of live)console.log(`${ok?'OK':'PENDING'}  ${label}`);
+console.log('Admin login: '+(process.env[cfg.adminTokenEnv||'QQ_ADMIN_TOKEN']?'environment token':existsSync(join(cfg.dataDir||join(root,'data'),'admin-token'))?'local token file':'generated at first start'));
+console.log(`Management: http://127.0.0.1:${cfg.port??3210}/qq-companion/; QQ enabled: ${Boolean(cfg.enabled)}.`);
+if(process.argv.includes('--strict')&&[...core,...live].some(([,ok])=>!ok))process.exitCode=1;
